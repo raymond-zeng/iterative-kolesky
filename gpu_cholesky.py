@@ -2,7 +2,6 @@ import jax.numpy as jnp
 import numpy as np
 from jax import jit
 from jax import tree_util
-# import jax.experimental.sparse as sparse
 import scipy.sparse as sparse
 import jax
 
@@ -95,6 +94,7 @@ def chol(points, sparsity, data, indices, ptr):
         for j in range(len(c)):
             data = data.at[idx].set(c[j])
             indices = indices.at[idx].set(s[j])
+            idx += 1
     return data, indices
 
 def naive_kl_cholesky(points, rho):
@@ -108,7 +108,7 @@ def naive_kl_cholesky(points, rho):
     return sparse.csc_matrix((data, indices, ptr), shape=(n, n))
 
 def main():
-    n = 10
+    n = 4
     points = create_points(n)
     order, lengths = reverse_maximin(points)
     ordered_points = points[order]
