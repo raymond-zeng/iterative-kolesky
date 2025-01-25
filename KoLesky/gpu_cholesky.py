@@ -4,6 +4,7 @@ from jax import jit
 from jax import tree_util
 import scipy.sparse as sparse
 import jax
+import timeit
 
 def create_points(n):
     seed = 0
@@ -113,10 +114,9 @@ def main():
     order, lengths = reverse_maximin(points)
     ordered_points = points[order]
     print(jax.devices())
+    start = timeit.default_timer()
     L = naive_kl_cholesky(points, 1.8).toarray()
-    theta = kernel(ordered_points)
-    print(sparse_kl_div(theta, L))
-    print(kl_div(theta, np.linalg.inv(L @ L.T)))
+    print(timeit.default_timer() - start)
 
 if __name__ == "__main__":
     main()
