@@ -12,8 +12,6 @@ dependencies:
   - mkl-devel>=2021.4.0
   - scikit-learn
   - matplotlib
-  - libboost
-  - py-boost
   - tbb-devel>=2021.11.0
   - libblas
   - liblapack

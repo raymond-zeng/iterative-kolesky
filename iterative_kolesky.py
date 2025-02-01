@@ -7,9 +7,8 @@ import scipy.linalg
 import scipy.sparse as sparse
 import sklearn.gaussian_process.kernels as kernels
 import timeit
-import seaborn as sns
-
-
+from KoLesky.maxheap import Heap
+from KoLesky.maximin import reverse_maximin
 def logdet_chol(A):
     return 2 * np.sum(np.log(A.diagonal()))
 
@@ -42,14 +41,13 @@ def new_kernel_idx(points, kernel, L, r, c):
     return result
     
 
-def reverse_maximin(points):
+def naive_reverse_maximin(points):
     n = np.shape(points)[0]
     indices = np.zeros(n, dtype=int)
     lengths = np.zeros(n, dtype=float)
-    dists = np.zeros(n)
     dists = np.linalg.norm(points - points[0], axis=1)
     indices[-1] = 0
-    lengths[-1] = np.inf
+    lengths[0] = np.inf
     for i in range(n - 2, -1, -1):
         k = np.argmax(dists)
         indices[i] = k
@@ -57,20 +55,24 @@ def reverse_maximin(points):
         dists = np.minimum(dists, np.linalg.norm(points[k] - points, axis=1))
     return indices, lengths
 
-def maximin(points):
-    n = np.shape(points)[0]
-    indices = np.zeros(n, dtype=int)
-    lengths = np.zeros(n, dtype=float)
-    dists = np.zeros(n)
-    for i in range(1, n):
-        dists[i] = np.linalg.norm(points[i] - points[0])
-    indices[0] = 0
-    lengths[0] = np.inf
-    for i in range(1, n):
-        k = np.argmax(dists)
+def py_reverse_maximin(points):
+    n = len(points)
+    indices = np.zeros(n, dtype=np.int64)
+    lengths = np.zeros(n)
+    tree = KDTree(points)
+    dists = np.linalg.norm(points - points[0], axis=1)
+    indices = np.zeros(n, dtype=np.int64)
+    lengths = np.zeros(n)
+    heap = Heap(dists, np.arange(n))
+    for i in range(n - 1, -1, -1):
+        lk, k = heap.pop()
         indices[i] = k
-        lengths[i] = dists[k]
-        dists = np.minimum(dists, np.linalg.norm(points[k] - points, axis=1))
+        lengths[i] = lk
+        js = tree.query_ball_point(points[k], lk)
+        dists = np.linalg.norm(points[js] - points[k], axis=1)
+        for index, j in enumerate(js):
+            heap.decrease_key(j, dists[index])
+
     return indices, lengths
 
 def naive_sparsity_pattern(points, lengths, rho):
@@ -86,6 +88,19 @@ def kd_sparsity_pattern(points, lengths, rho):
     tree = KDTree(points)
     near = tree.query_ball_point(points, rho * lengths)
     return {i: [j for j in near[i] if j >= i] for i in range(len(points))}
+
+def sparsity_pattern(points, lengths, rho):
+    tree, offset, length_scale = KDTree(points), 0, lengths[0]
+    sparsity = {}
+    for i in range(len(points)):
+        if lengths[i] > 2 * length_scale:
+            tree, offset, length_scale = KDTree(points[i:]), i, lengths[i]
+        sparsity[i] = [
+            offset + j
+            for j in tree.query_ball_point(points[i], rho * lengths[i])
+            if offset + j >= i
+        ]
+    return sparsity
 
 def supernodes(sparsity, lengths, lamb):
     groups = []
@@ -192,14 +207,14 @@ def aggregate_iter_chol(points, kernel, sparsity, groups, L):
 def naive_kl_cholesky(points, rho):
     indices, lengths = reverse_maximin(points)
     ordered_points = points[indices]
-    sparsity = kd_sparsity_pattern(ordered_points, lengths, rho)
+    sparsity = sparsity_pattern(ordered_points, lengths, rho)
     kernel = kernels.Matern(length_scale=1.0, nu=0.5)
     return chol(ordered_points, kernel, sparsity)
 
 def aggregated_kl_cholesky(points, rho, lamb):
     indices, lengths = reverse_maximin(points)
     ordered_points = points[indices]
-    sparsity = naive_sparsity_pattern(ordered_points, lengths, rho)
+    sparsity = sparsity_pattern(ordered_points, lengths, rho)
     groups, agg_sparsity = supernodes(sparsity, lengths, lamb)
     kernel = kernels.Matern(length_scale=1.0, nu=0.5)
     return aggregate_chol(ordered_points, kernel, agg_sparsity, groups)
@@ -263,23 +278,36 @@ def plot_3d(points, theta, col):
 def main():
     seed = 0
     np.random.seed(seed)
-    n = 10
+    n = 1000
     points = np.zeros((n * n, 2))
     for i in range(n):
         for j in range(n):
             perturbation = np.random.uniform(-0.2, 0.2, 2)
             points[i * n + j] = np.array([i - n/2, j - n/2]) + perturbation
-    order, lengths = reverse_maximin(points)
-    ordered_points = points[order]
-    kernel = kernels.Matern(length_scale=1, nu=0.5)
-    theta = kernel(ordered_points)
+    # order, lengths = reverse_maximin(points)
+    # ordered_points = points[order]
+    # kernel = kernels.Matern(length_scale=1, nu=0.5)
+    # theta = kernel(ordered_points)
     start = timeit.default_timer()
-    L, iter_L = naive_iterative_kl_cholesky(points, 1.2)
+    # L, iter_L = naive_iterative_kl_cholesky(points, 1.2)
+    # L = naive_kl_cholesky(points, 3.0)
+    # indices, lengths = reverse_maximin(points)
+    # ordered_points = points[indices]
+    # sparsity = sparsity_pattern(ordered_points, lengths, 2)
+    # groups, sparsity = supernodes(sparsity, lengths, 1.5)
+    reverse_maximin(points)
+    # L = aggregated_kl_cholesky(points, 3.0, 1.5)
+    # order, lengths = ball_reverse_maximin(points)
     print(timeit.default_timer() - start)
-    new_L = L @ iter_L
-    new_L = new_L.toarray()
-    kl = sparse_kl_div(theta, new_L)
-    print(kl)
+    start = timeit.default_timer()
+    py_reverse_maximin(points)
+    print(timeit.default_timer() - start)
+    # new_L = L @ iter_L
+    # new_L = new_L.toarray()
+    # kl = sparse_kl_div(theta, L)
+    # print(kl)
+    # kl = kl_div(theta, np.linalg.inv(L @ L.T))
+    # print(kl)
     # print(L)
 
 
