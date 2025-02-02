@@ -4,16 +4,14 @@ from scipy.spatial import KDTree
 from .maxheap cimport Heap
 from . cimport mkl
 
-
 np.import_array()
-
-cdef double[:] _distance_vector(double[:, ::1] points, double[::1] point):
+cdef double[::1] _distance_vector(double[:, ::1] points, double[::1] point):
    cdef:
        int n, i, j
        double dist, d
        double *start
        double *p
-       double[:] dists
+       double[::1] dists
    n = points.shape[1]
    start = &points[0, 0]
    p = &point[0]
@@ -27,15 +25,15 @@ cdef double[:] _distance_vector(double[:, ::1] points, double[::1] point):
    mkl.vdSqrt(points.shape[0], &dists[0], &dists[0])
    return dists
 
-cpdef reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
+cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
     cdef:
         int n, i, k, index, j
         double lk
-        long[:] indices
-        double[:] lengths
+        long[::1] indices
+        double[::1] lengths
         Heap heap
         double[:, ::1] points_js
-        double[:] dists
+        double[::1] dists
         list js
     n = points.shape[0]
     indices = np.empty(n, dtype = np.long)
@@ -53,3 +51,26 @@ cpdef reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
             j = js[index]
             heap.decrease_key(j, dists[index])
     return indices, lengths
+
+cpdef object[::1] sparsity_pattern(double[:, ::1] points, double[::1] lengths, double rho):
+    cdef:
+        int n, i, offset
+        long j
+        double length_scale
+        object[::1] sparsity
+    n = points.shape[0]
+    tree = KDTree(points)
+    offset = 0
+    length_scale = lengths[0]
+    sparsity = np.empty(n, dtype = object)
+    for i in range(n):
+        if lengths[i] > 2 * length_scale:
+            tree = KDTree(points[i:])
+            offset = i
+            length_scale = lengths[i]
+        sparsity[i] = [
+            offset + j
+            for j in tree.query_ball_point(points[i], rho * lengths[i])
+            if offset + j >= i
+        ]
+    return sparsity

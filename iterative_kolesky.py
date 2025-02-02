@@ -8,7 +8,8 @@ import scipy.sparse as sparse
 import sklearn.gaussian_process.kernels as kernels
 import timeit
 from KoLesky.maxheap import Heap
-from KoLesky.maximin import reverse_maximin
+from KoLesky.ordering import reverse_maximin
+from KoLesky.ordering import sparsity_pattern
 def logdet_chol(A):
     return 2 * np.sum(np.log(A.diagonal()))
 
@@ -72,7 +73,6 @@ def py_reverse_maximin(points):
         dists = np.linalg.norm(points[js] - points[k], axis=1)
         for index, j in enumerate(js):
             heap.decrease_key(j, dists[index])
-
     return indices, lengths
 
 def naive_sparsity_pattern(points, lengths, rho):
@@ -89,7 +89,7 @@ def kd_sparsity_pattern(points, lengths, rho):
     near = tree.query_ball_point(points, rho * lengths)
     return {i: [j for j in near[i] if j >= i] for i in range(len(points))}
 
-def sparsity_pattern(points, lengths, rho):
+def py_sparsity_pattern(points, lengths, rho):
     tree, offset, length_scale = KDTree(points), 0, lengths[0]
     sparsity = {}
     for i in range(len(points)):
@@ -284,31 +284,8 @@ def main():
         for j in range(n):
             perturbation = np.random.uniform(-0.2, 0.2, 2)
             points[i * n + j] = np.array([i - n/2, j - n/2]) + perturbation
-    # order, lengths = reverse_maximin(points)
-    # ordered_points = points[order]
-    # kernel = kernels.Matern(length_scale=1, nu=0.5)
-    # theta = kernel(ordered_points)
-    start = timeit.default_timer()
-    # L, iter_L = naive_iterative_kl_cholesky(points, 1.2)
-    # L = naive_kl_cholesky(points, 3.0)
-    # indices, lengths = reverse_maximin(points)
-    # ordered_points = points[indices]
-    # sparsity = sparsity_pattern(ordered_points, lengths, 2)
-    # groups, sparsity = supernodes(sparsity, lengths, 1.5)
-    reverse_maximin(points)
-    # L = aggregated_kl_cholesky(points, 3.0, 1.5)
-    # order, lengths = ball_reverse_maximin(points)
-    print(timeit.default_timer() - start)
-    start = timeit.default_timer()
-    py_reverse_maximin(points)
-    print(timeit.default_timer() - start)
-    # new_L = L @ iter_L
-    # new_L = new_L.toarray()
-    # kl = sparse_kl_div(theta, L)
-    # print(kl)
-    # kl = kl_div(theta, np.linalg.inv(L @ L.T))
-    # print(kl)
-    # print(L)
+    order, lengths = reverse_maximin(points)
+    ordered_points = points[order]
 
 
 
