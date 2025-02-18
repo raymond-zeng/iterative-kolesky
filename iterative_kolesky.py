@@ -10,6 +10,7 @@ import timeit
 from KoLesky.maxheap import Heap
 from KoLesky.ordering import reverse_maximin
 from KoLesky.ordering import sparsity_pattern
+from KoLesky.ordering import update_dists
 def logdet_chol(A):
     return 2 * np.sum(np.log(A.diagonal()))
 
@@ -75,6 +76,23 @@ def py_reverse_maximin(points):
             heap.decrease_key(j, dists[index])
     return indices, lengths
 
+def py_p_reverse_maximin(points, p = 1):
+    inf = 1e6
+    n = len(points)
+    indices = np.zeros(n, dtype = np.int64)
+    lengths = np.zeros(n)
+    dists = np.array([[-i + inf] * p for i in range(n)])
+    tree = KDTree(points)
+    heap = Heap(np.max(dists, axis=1), np.arrange(n))
+    for i in range(n - 1, -1, -1):
+        lk, k = heap.pop()
+        indices[i] = k
+        lengths[i] = lk if lk < inf - n else np.inf
+        js = tree.query_ball_point(points[k], lk)
+        dists_k = np.linalg.norm(points[js] - points[k], axis=1)
+        update_dists(heap, dists, dists_k, np.array(js, dtype=np.int64))
+    return indices, lengths
+        
 def naive_sparsity_pattern(points, lengths, rho):
     n = len(points)
     sparsity = {i : [] for i in range(n)}

@@ -4,6 +4,34 @@ from scipy.spatial import KDTree
 from .maxheap cimport Heap
 from . cimport mkl
 
+cpdef void update_dists(
+    Heap heap,
+    double[:, ::1] dists,
+    double[::1] dists_k,
+    long[::1] js,
+):
+    """Update the distance table and heap."""
+    cdef:
+        int p, index, i, insert
+        long j
+        float d
+
+    p = dists.shape[1]
+    for index in range(js.shape[0]):
+        j = js[index]
+        d = dists_k[index]
+        # insert d into dists[j], pushing out the largest value
+        i = 0
+        for i in range(p):
+            if d <= dists[j, i]:
+                break
+        insert = i
+        for i in range(p - 1, insert, -1):
+            dists[j, i] = dists[j, i - 1]
+        if insert < p:
+            dists[j, insert] = d
+        heap.__decrease_key(j, dists[j, p - 1])
+
 np.import_array()
 cdef double[::1] _distance_vector(double[:, ::1] points, double[::1] point):
    cdef:
@@ -32,7 +60,6 @@ cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
         long[::1] indices
         double[::1] lengths
         Heap heap
-        double[:, ::1] points_js
         double[::1] dists
         list js
     n = points.shape[0]
@@ -50,6 +77,39 @@ cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
         for index in range(len(js)):
             j = js[index]
             heap.decrease_key(j, dists[index])
+    return indices, lengths
+
+cpdef tuple p_reverse_maximin(np.ndarray[np.float64_t, ndim=2] points, int p = 1):
+    cdef:
+        int n, i, k
+        double inf, lk
+        long[::1] indices
+        double[::1] lengths
+        double[:, ::1] dists
+        double[::1] dists_k
+        Heap heap
+        list js
+    inf = 1e6
+    n = points.shape[0]
+    indices = np.empty(n, dtype = np.long)
+    lengths = np.empty(n, dtype = np.float64)
+    dists = np.array([[-i + inf] * p for i in range(n)])
+    # dists = np.empty((n, p), dtype = np.float64)
+    # for i in range(n):
+        
+    tree = KDTree(points)
+    heap = Heap(np.max(dists, axis=1), np.arrange(n))
+    for i in range(n - 1, -1, -1):
+        lk, k = heap.pop()
+        indices[i] = k
+        # lengths[i] = lk if lk < inf - n else np.inf
+        if lk < inf - n:
+            lengths[i] = lk
+        else:
+            lengths[i] = np.inf
+        js = tree.query_ball_point(points[k], lk)
+        dists_k = _distance_vector(points[js], points[k])
+        update_dists(heap, dists, dists_k, np.array(js, dtype=np.int64))
     return indices, lengths
 
 cpdef object[::1] sparsity_pattern(double[:, ::1] points, double[::1] lengths, double rho):
