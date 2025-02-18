@@ -53,9 +53,9 @@ cdef double[::1] _distance_vector(double[:, ::1] points, double[::1] point):
    mkl.vdSqrt(points.shape[0], &dists[0], &dists[0])
    return dists
 
-cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
+cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points, double[:, ::1] initial = None):
     cdef:
-        int n, i, k, index, j
+        int n, i, k, index, j, start
         double lk
         long[::1] indices
         double[::1] lengths
@@ -65,10 +65,19 @@ cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
     n = points.shape[0]
     indices = np.empty(n, dtype = np.long)
     lengths = np.empty(n, dtype = np.float64)
+    if initial is None or initial.shape[0] == 0:
+        k = 0
+        dists = _distance_vector(points, points[0])
+        indices[n - 1] = k
+        lengths[n - 1] = np.inf
+        start = n - 2
+    else:
+        initial_tree = KDTree(initial)
+        dists = initial_tree.query(points)[0]
+        start = n - 1
     tree = KDTree(points)
-    dists = _distance_vector(points, points[0])
     heap = Heap(dists, np.arange(n))
-    for i in range(n - 1, -1, -1):
+    for i in range(start, -1, -1):
         lk, k = heap.pop()
         indices[i] = k
         lengths[i] = lk
@@ -79,7 +88,7 @@ cpdef tuple reverse_maximin(np.ndarray[np.float64_t, ndim=2] points):
             heap.decrease_key(j, dists[index])
     return indices, lengths
 
-cpdef tuple p_reverse_maximin(np.ndarray[np.float64_t, ndim=2] points, int p = 1):
+cpdef tuple p_reverse_maximin(np.ndarray[np.float64_t, ndim=2] points, double[:, ::1] initial = None, int p = 1):
     cdef:
         int n, i, k
         double inf, lk
@@ -93,16 +102,17 @@ cpdef tuple p_reverse_maximin(np.ndarray[np.float64_t, ndim=2] points, int p = 1
     n = points.shape[0]
     indices = np.empty(n, dtype = np.long)
     lengths = np.empty(n, dtype = np.float64)
-    dists = np.array([[-i + inf] * p for i in range(n)])
-    # dists = np.empty((n, p), dtype = np.float64)
-    # for i in range(n):
-        
+    if initial is None or initial.shape[0] == 0:
+        dists = np.array([[-i + inf] * p for i in range(n)])
+    else:
+        initial_tree = KDTree(initial)
+        dists = initial_tree.query(points, p)[0]
+        dists = dists.reshape(n, p)
     tree = KDTree(points)
-    heap = Heap(np.max(dists, axis=1), np.arrange(n))
+    heap = Heap(np.max(dists, axis=1), np.arange(n))
     for i in range(n - 1, -1, -1):
         lk, k = heap.pop()
         indices[i] = k
-        # lengths[i] = lk if lk < inf - n else np.inf
         if lk < inf - n:
             lengths[i] = lk
         else:

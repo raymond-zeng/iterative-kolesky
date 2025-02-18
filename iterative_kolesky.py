@@ -83,7 +83,7 @@ def py_p_reverse_maximin(points, p = 1):
     lengths = np.zeros(n)
     dists = np.array([[-i + inf] * p for i in range(n)])
     tree = KDTree(points)
-    heap = Heap(np.max(dists, axis=1), np.arrange(n))
+    heap = Heap(np.max(dists, axis=1), np.arange(n))
     for i in range(n - 1, -1, -1):
         lk, k = heap.pop()
         indices[i] = k
